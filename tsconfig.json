@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "outDir": "./dist",
+    "declaration": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "target": "es2021",
+    "lib": ["es2021"],
+    "module": "NodeNext",
+    "resolveJsonModule": true
+  },
+  "exclude": ["dist", "node_modules"]
+}

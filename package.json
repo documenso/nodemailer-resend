@@ -1,0 +1,41 @@
+{
+  "name": "nodemailer-resend",
+  "version": "1.0.0",
+  "description": "Transport for sending email via the Resend SDK",
+  "author": "Lucas Smith",
+  "license": "MIT",
+  "main": "dist/main.js",
+  "types": "dist/main.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/documenso/nodemailer-resend.git"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "pretty": "prettier --write ."
+  },
+  "dependencies": {
+    "resend": "^1.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.7.1",
+    "@types/nodemailer": "^6.4.11",
+    "prettier": "^3.0.3",
+    "tsup": "^6.7.0",
+    "typescript": "^5.1.3"
+  },
+  "tsup": {
+    "dts": true,
+    "treeshake": true,
+    "sourceMap": true,
+    "minify": true,
+    "format": [
+      "esm",
+      "cjs"
+    ],
+    "entry": [
+      "src/main.ts"
+    ]
+  }
+}
