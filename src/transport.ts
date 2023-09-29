@@ -3,6 +3,7 @@ import { type SentMessageInfo, type Transport } from 'nodemailer';
 import type Mail from 'nodemailer/lib/mailer';
 import type MailMessage from 'nodemailer/lib/mailer/mail-message';
 import { Resend } from 'resend';
+
 import { version as VERSION } from '../package.json';
 import { ResendResponseError, ResendTransportOptions } from './types/transport';
 
@@ -28,7 +29,6 @@ export class ResendTransport implements Transport<SentMessageInfo> {
   public version = VERSION;
 
   private _client: Resend;
-  private _options: ResendTransportOptions;
 
   public static makeTransport(options: Partial<ResendTransportOptions>) {
     return new ResendTransport(options);
@@ -36,10 +36,6 @@ export class ResendTransport implements Transport<SentMessageInfo> {
 
   constructor(options: Partial<ResendTransportOptions>) {
     const { apiKey = '' } = options;
-
-    this._options = {
-      apiKey,
-    };
 
     this._client = new Resend(apiKey);
   }
@@ -72,7 +68,7 @@ export class ResendTransport implements Transport<SentMessageInfo> {
       });
   }
 
-  private toResendAddresses(addresses: Mail.Options['to']) {
+  public toResendAddresses(addresses: Mail.Options['to']) {
     if (!addresses) {
       return [];
     }
@@ -94,7 +90,7 @@ export class ResendTransport implements Transport<SentMessageInfo> {
     return [addresses.address];
   }
 
-  private toResendFromAddress(address: Mail.Options['from']) {
+  public toResendFromAddress(address: Mail.Options['from']) {
     if (!address) {
       return '';
     }
@@ -106,7 +102,7 @@ export class ResendTransport implements Transport<SentMessageInfo> {
     return `${address.name} <${address.address}>`;
   }
 
-  private toResendAttachments(attachments: Mail.Options['attachments']) {
+  public toResendAttachments(attachments: Mail.Options['attachments']) {
     if (!attachments) {
       return [];
     }

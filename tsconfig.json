@@ -1,13 +1,24 @@
 {
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Default",
   "compilerOptions": {
-    "outDir": "./dist",
+    "alwaysStrict": true,
+    "composite": false,
     "declaration": true,
-    "skipLibCheck": true,
+    "declarationMap": true,
     "esModuleInterop": true,
-    "target": "es2021",
-    "lib": ["es2021"],
-    "module": "NodeNext",
-    "resolveJsonModule": true
+    "forceConsistentCasingInFileNames": true,
+    "inlineSources": false,
+    "isolatedModules": true,
+    "moduleResolution": "node",
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "preserveWatchOutput": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2018"
   },
-  "exclude": ["dist", "node_modules"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/.d.ts"],
+  "exclude": ["node_modules"]
 }
