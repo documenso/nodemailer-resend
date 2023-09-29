@@ -13,7 +13,7 @@
 #### Install the package
 
 ```bash
-npm install nodemailer-resend
+npm install @documenso/nodemailer-resend
 ```
 
 ### Usage
