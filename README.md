@@ -22,7 +22,7 @@ npm install nodemailer-resend
 
 ```typescript
 import { createTransport } from 'nodemailer';
-import { ResendTransport } from 'nodemailer-resend';
+import { ResendTransport } from '@documenso/nodemailer-resend';
 
 const mailer = createTransport(
   createTransport(
