@@ -11,6 +11,9 @@
     "type": "git",
     "url": "git+https://github.com/documenso/nodemailer-resend.git"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "dev": "tsup --watch",
     "build": "tsup",
