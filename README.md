@@ -2,6 +2,12 @@
 
 > Transport for sending email via the Resend SDK
 
+<p align="left">
+  <img alt="NPM Version" src="https://img.shields.io/npm/v/%40documenso/nodemailer-resend" />
+  <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/documenso/nodemailer-resend">
+  <img alt="GitHub" src="https://img.shields.io/github/license/documenso/nodemailer-resend">
+</p>
+
 ### Getting Started!
 
 #### Install the package
