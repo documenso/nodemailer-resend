@@ -6,7 +6,7 @@ jobs:
     strategy:
       matrix:
         node: [18, 20]
-    name: Build on Node ${{ matrix.node }}
+    name: Test on Node ${{ matrix.node }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v2
