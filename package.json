@@ -14,12 +14,14 @@
   "scripts": {
     "dev": "tsup --watch",
     "build": "tsup",
+    "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:coverage": "vitest --coverage",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "preversion": "npm run format && npm run test:coverage"
   },
   "dependencies": {
-    "resend": "^1.1.0"
+    "resend": "^2.0.0"
   },
   "peerDependencies": {
     "nodemailer": "^6.9.3"

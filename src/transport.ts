@@ -3,23 +3,10 @@ import { type SentMessageInfo, type Transport } from 'nodemailer';
 import type Mail from 'nodemailer/lib/mailer';
 import type MailMessage from 'nodemailer/lib/mailer/mail-message';
 import { Resend } from 'resend';
+import { RESEND_ERROR_CODES_BY_KEY } from 'resend/build/src/interfaces';
 
 import { version as VERSION } from '../package.json';
-import { ResendResponseError, ResendTransportOptions } from './types/transport';
-
-const isResendResponseError = (error: unknown): error is ResendResponseError => {
-  // We could use Zod here, but it's not worth the extra bundle size
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'statusCode' in error &&
-    typeof error.statusCode === 'number' &&
-    'name' in error &&
-    typeof error.name === 'string' &&
-    'message' in error &&
-    typeof error.message === 'string'
-  );
-};
+import { ResendTransportOptions } from './types/transport';
 
 /**
  * Transport for sending email via the Resend SDK.
@@ -45,8 +32,8 @@ export class ResendTransport implements Transport<SentMessageInfo> {
       return callback(new Error('Missing required fields "to" or "from"'), null);
     }
 
-    this._client
-      .sendEmail({
+    this._client.emails
+      .send({
         subject: mail.data.subject ?? '',
         from: this.toResendFromAddress(mail.data.from),
         to: this.toResendAddresses(mail.data.to),
@@ -57,11 +44,13 @@ export class ResendTransport implements Transport<SentMessageInfo> {
         attachments: this.toResendAttachments(mail.data.attachments),
       })
       .then((response) => {
-        if (isResendResponseError(response)) {
-          throw new Error(`[${response.statusCode}]: ${response.name} ${response.message}`);
+        if (response.error) {
+          const statusCode = RESEND_ERROR_CODES_BY_KEY[response.error.name] ?? 500;
+
+          throw new Error(`[${statusCode}]: ${response.error.name} ${response.error.message}`);
         }
 
-        callback(null, response);
+        callback(null, response.data);
       })
       .catch((error) => {
         callback(error, null);

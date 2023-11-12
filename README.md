@@ -21,8 +21,8 @@ npm install @documenso/nodemailer-resend
 #### Create Nodemailer Transport
 
 ```typescript
-import { createTransport } from 'nodemailer';
 import { ResendTransport } from '@documenso/nodemailer-resend';
+import { createTransport } from 'nodemailer';
 
 const mailer = createTransport(
   createTransport(
