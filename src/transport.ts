@@ -3,10 +3,25 @@ import { type SentMessageInfo, type Transport } from 'nodemailer';
 import type Mail from 'nodemailer/lib/mailer';
 import type MailMessage from 'nodemailer/lib/mailer/mail-message';
 import { Resend } from 'resend';
-import { RESEND_ERROR_CODES_BY_KEY } from 'resend/build/src/interfaces';
 
 import { version as VERSION } from '../package.json';
 import { ResendTransportOptions } from './types/transport';
+
+export const RESEND_ERROR_CODES_BY_KEY = {
+  missing_required_field: 422,
+  invalid_access: 422,
+  invalid_parameter: 422,
+  invalid_region: 422,
+  rate_limit_exceeded: 429,
+  missing_api_key: 401,
+  invalid_api_Key: 403,
+  invalid_from_address: 403,
+  validation_error: 403,
+  not_found: 404,
+  method_not_allowed: 405,
+  application_error: 500,
+  internal_server_error: 500,
+} as const;
 
 /**
  * Transport for sending email via the Resend SDK.
