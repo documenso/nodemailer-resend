@@ -9,6 +9,9 @@ import { ResendTransportOptions } from './types/transport';
 
 export const RESEND_ERROR_CODES_BY_KEY = {
   missing_required_field: 422,
+  invalid_idempotency_key: 400,
+  invalid_idempotent_request: 409,
+  concurrent_idempotent_requests: 409,
   invalid_access: 422,
   invalid_parameter: 422,
   invalid_region: 422,
@@ -94,9 +97,13 @@ export class ResendTransport implements Transport<SentMessageInfo> {
     return [addresses.address];
   }
 
-  public toResendFromAddress(address: Mail.Options['from']) {
+  public toResendFromAddress(address: Mail.Options['from']): string {
     if (!address) {
       return '';
+    }
+
+    if (Array.isArray(address)) {
+      return this.toResendFromAddress(address[0]);
     }
 
     if (typeof address === 'string') {
