@@ -139,6 +139,53 @@ describe('ResendTransport', () => {
 
       expect(result).toEqual({ 'X-Test': 'a, b', 'X-Other': 'c' });
     });
+
+    // Plain JS consumers are not bound by the type contract and nodemailer's own
+    // MIME builder tolerates non-string values by coercing them, so the transport
+    // should match that behaviour rather than dropping or crashing.
+    it('should coerce numeric header values from untyped callers to strings', () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const headers = { 'X-Test': 123 } as unknown as Mail.Options['headers'];
+
+      const result = transport.toResendHeaders(headers);
+
+      expect(result).toEqual({ 'X-Test': '123' });
+    });
+
+    it('should coerce non-string values in key-value entry arrays to strings', () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const headers = [{ key: 'X-Test', value: 123 }] as unknown as Mail.Options['headers'];
+
+      const result = transport.toResendHeaders(headers);
+
+      expect(result).toEqual({ 'X-Test': '123' });
+    });
+
+    it('should skip nullish header values from untyped callers', () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const headers = {
+        'X-Null': null,
+        'X-Undefined': undefined,
+        'X-Kept': 'value',
+      } as unknown as Mail.Options['headers'];
+
+      const result = transport.toResendHeaders(headers);
+
+      expect(result).toEqual({ 'X-Kept': 'value' });
+    });
+
+    it('should return undefined when all header values are nullish', () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const headers = { 'X-Null': null } as unknown as Mail.Options['headers'];
+
+      const result = transport.toResendHeaders(headers);
+
+      expect(result).toBeUndefined();
+    });
   });
 
   describe('toResendAddresses', () => {

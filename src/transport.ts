@@ -124,6 +124,9 @@ export class ResendTransport implements Transport<SentMessageInfo> {
    * Repeated values for the same header key are combined into a single
    * comma-separated value since the API cannot repeat a header key.
    *
+   * Values are defensively coerced to strings and nullish values are skipped,
+   * mirroring nodemailer's own tolerance for untyped (plain JS) callers.
+   *
    * Returns `undefined` when there are no headers so the field is omitted
    * from the API payload entirely.
    */
@@ -134,8 +137,14 @@ export class ResendTransport implements Transport<SentMessageInfo> {
 
     const normalized: Record<string, string> = {};
 
-    const appendHeader = (key: string, value: string) => {
-      normalized[key] = normalized[key] ? `${normalized[key]}, ${value}` : value;
+    const appendHeader = (key: string, value: unknown) => {
+      if (value === null || value === undefined) {
+        return;
+      }
+
+      const stringValue = String(value);
+
+      normalized[key] = normalized[key] ? `${normalized[key]}, ${stringValue}` : stringValue;
     };
 
     if (Array.isArray(headers)) {
@@ -144,11 +153,6 @@ export class ResendTransport implements Transport<SentMessageInfo> {
       }
     } else {
       for (const [key, value] of Object.entries(headers)) {
-        if (typeof value === 'string') {
-          appendHeader(key, value);
-          continue;
-        }
-
         if (Array.isArray(value)) {
           for (const item of value) {
             appendHeader(key, item);
@@ -157,7 +161,12 @@ export class ResendTransport implements Transport<SentMessageInfo> {
           continue;
         }
 
-        appendHeader(key, value.value);
+        if (typeof value === 'object' && value !== null) {
+          appendHeader(key, value.value);
+          continue;
+        }
+
+        appendHeader(key, value);
       }
     }
 
