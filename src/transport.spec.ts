@@ -1,9 +1,193 @@
 import { Stream } from 'node:stream';
-import { describe, expect, it } from 'vitest';
+import type Mail from 'nodemailer/lib/mailer';
+import type MailMessage from 'nodemailer/lib/mailer/mail-message';
+import { describe, expect, it, vi } from 'vitest';
 
 import { ResendTransport } from './transport';
 
+const sendViaTransport = async (transport: ResendTransport, mailData: Mail.Options) => {
+  const sendSpy = vi.fn().mockResolvedValue({ data: { id: 'fake-id' }, error: null });
+
+  (transport as unknown as { _client: { emails: { send: typeof sendSpy } } })._client = {
+    emails: { send: sendSpy },
+  };
+
+  await new Promise<void>((resolve, reject) => {
+    transport.send({ data: mailData } as unknown as MailMessage, (err) =>
+      err ? reject(err) : resolve(),
+    );
+  });
+
+  return sendSpy.mock.calls[0][0];
+};
+
+const BASE_MAIL_DATA: Mail.Options = {
+  from: { name: 'Test User', address: 'test@example.com' },
+  to: 'recipient@example.com',
+  subject: 'Test subject',
+  html: '<p>hi</p>',
+  text: 'hi',
+};
+
 describe('ResendTransport', () => {
+  describe('send', () => {
+    it('should pass replyTo to the Resend API when set', async () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const payload = await sendViaTransport(transport, {
+        ...BASE_MAIL_DATA,
+        replyTo: 'reply@example.com',
+      });
+
+      expect(payload.replyTo).toEqual(['reply@example.com']);
+    });
+
+    it('should pass replyTo address objects to the Resend API when set', async () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const payload = await sendViaTransport(transport, {
+        ...BASE_MAIL_DATA,
+        replyTo: { name: 'Reply User', address: 'reply@example.com' },
+      });
+
+      expect(payload.replyTo).toEqual(['reply@example.com']);
+    });
+
+    it('should omit replyTo when it is not set', async () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const payload = await sendViaTransport(transport, BASE_MAIL_DATA);
+
+      expect(payload.replyTo).toBeUndefined();
+    });
+
+    it('should pass custom headers to the Resend API when set', async () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const payload = await sendViaTransport(transport, {
+        ...BASE_MAIL_DATA,
+        headers: {
+          'X-Custom-Header': 'custom-value',
+          'X-Other-Header': 'other-value',
+        },
+      });
+
+      expect(payload.headers).toEqual({
+        'X-Custom-Header': 'custom-value',
+        'X-Other-Header': 'other-value',
+      });
+    });
+
+    it('should omit headers when they are not set', async () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const payload = await sendViaTransport(transport, BASE_MAIL_DATA);
+
+      expect(payload.headers).toBeUndefined();
+    });
+  });
+
+  describe('toResendHeaders', () => {
+    it('should return undefined when headers are not set', () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const result = transport.toResendHeaders(undefined);
+
+      expect(result).toBeUndefined();
+    });
+
+    it('should return undefined when headers are empty', () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const result = transport.toResendHeaders({});
+
+      expect(result).toBeUndefined();
+    });
+
+    it('should pass through string values', () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const result = transport.toResendHeaders({ 'X-Test': 'value' });
+
+      expect(result).toEqual({ 'X-Test': 'value' });
+    });
+
+    it('should join array values with a comma', () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const result = transport.toResendHeaders({ 'X-Test': ['a', 'b'] });
+
+      expect(result).toEqual({ 'X-Test': 'a, b' });
+    });
+
+    it('should unwrap prepared header values', () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const result = transport.toResendHeaders({ 'X-Test': { prepared: true, value: 'value' } });
+
+      expect(result).toEqual({ 'X-Test': 'value' });
+    });
+
+    it('should convert key-value entry arrays and combine duplicate keys', () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const result = transport.toResendHeaders([
+        { key: 'X-Test', value: 'a' },
+        { key: 'X-Test', value: 'b' },
+        { key: 'X-Other', value: 'c' },
+      ]);
+
+      expect(result).toEqual({ 'X-Test': 'a, b', 'X-Other': 'c' });
+    });
+
+    // Plain JS consumers are not bound by the type contract and nodemailer's own
+    // MIME builder tolerates non-string values by coercing them, so the transport
+    // should match that behaviour rather than dropping or crashing.
+    it('should coerce numeric header values from untyped callers to strings', () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const headers = { 'X-Test': 123 } as unknown as Mail.Options['headers'];
+
+      const result = transport.toResendHeaders(headers);
+
+      expect(result).toEqual({ 'X-Test': '123' });
+    });
+
+    it('should coerce non-string values in key-value entry arrays to strings', () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const headers = [{ key: 'X-Test', value: 123 }] as unknown as Mail.Options['headers'];
+
+      const result = transport.toResendHeaders(headers);
+
+      expect(result).toEqual({ 'X-Test': '123' });
+    });
+
+    it('should skip nullish header values from untyped callers', () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const headers = {
+        'X-Null': null,
+        'X-Undefined': undefined,
+        'X-Kept': 'value',
+      } as unknown as Mail.Options['headers'];
+
+      const result = transport.toResendHeaders(headers);
+
+      expect(result).toEqual({ 'X-Kept': 'value' });
+    });
+
+    it('should return undefined when all header values are nullish', () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const headers = { 'X-Null': null } as unknown as Mail.Options['headers'];
+
+      const result = transport.toResendHeaders(headers);
+
+      expect(result).toBeUndefined();
+    });
+  });
+
   describe('toResendAddresses', () => {
     it('should convert undefined to an array', () => {
       const transport = new ResendTransport({ apiKey: 'test-api-key' });

@@ -50,6 +50,8 @@ export class ResendTransport implements Transport<SentMessageInfo> {
       return callback(new Error('Missing required fields "to" or "from"'), null);
     }
 
+    const replyTo = this.toResendAddresses(mail.data.replyTo);
+
     this._client.emails
       .send({
         subject: mail.data.subject ?? '',
@@ -57,6 +59,8 @@ export class ResendTransport implements Transport<SentMessageInfo> {
         to: this.toResendAddresses(mail.data.to),
         cc: this.toResendAddresses(mail.data.cc),
         bcc: this.toResendAddresses(mail.data.bcc),
+        replyTo: replyTo.length > 0 ? replyTo : undefined,
+        headers: this.toResendHeaders(mail.data.headers),
         html: mail.data.html?.toString() || '',
         text: mail.data.text?.toString() || '',
         attachments: this.toResendAttachments(mail.data.attachments),
@@ -111,6 +115,66 @@ export class ResendTransport implements Transport<SentMessageInfo> {
     }
 
     return `${address.name} <${address.address}>`;
+  }
+
+  /**
+   * Normalizes nodemailer mail headers into the flat `Record<string, string>`
+   * shape accepted by the Resend API.
+   *
+   * Repeated values for the same header key are combined into a single
+   * comma-separated value since the API cannot repeat a header key.
+   *
+   * Values are defensively coerced to strings and nullish values are skipped,
+   * mirroring nodemailer's own tolerance for untyped (plain JS) callers.
+   *
+   * Returns `undefined` when there are no headers so the field is omitted
+   * from the API payload entirely.
+   */
+  public toResendHeaders(headers: Mail.Options['headers']): Record<string, string> | undefined {
+    if (!headers) {
+      return undefined;
+    }
+
+    const normalized: Record<string, string> = {};
+
+    const appendHeader = (key: string, value: unknown) => {
+      if (value === null || value === undefined) {
+        return;
+      }
+
+      const stringValue = String(value);
+
+      normalized[key] = normalized[key] ? `${normalized[key]}, ${stringValue}` : stringValue;
+    };
+
+    if (Array.isArray(headers)) {
+      for (const { key, value } of headers) {
+        appendHeader(key, value);
+      }
+    } else {
+      for (const [key, value] of Object.entries(headers)) {
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            appendHeader(key, item);
+          }
+
+          continue;
+        }
+
+        if (typeof value === 'object' && value !== null) {
+          appendHeader(key, value.value);
+          continue;
+        }
+
+        appendHeader(key, value);
+      }
+    }
+
+    if (Object.keys(normalized).length === 0) {
+      return undefined;
+    }
+
+    return normalized;
   }
 
   public toResendAttachments(attachments: Mail.Options['attachments']) {
