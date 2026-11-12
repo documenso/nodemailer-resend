@@ -7,24 +7,11 @@ import { Resend } from 'resend';
 import { version as VERSION } from '../package.json';
 import { ResendTransportOptions } from './types/transport';
 
-export const RESEND_ERROR_CODES_BY_KEY = {
-  missing_required_field: 422,
-  invalid_idempotency_key: 400,
-  invalid_idempotent_request: 409,
-  concurrent_idempotent_requests: 409,
-  invalid_access: 422,
-  invalid_parameter: 422,
-  invalid_region: 422,
-  rate_limit_exceeded: 429,
-  missing_api_key: 401,
-  invalid_api_Key: 403,
-  invalid_from_address: 403,
-  validation_error: 403,
-  not_found: 404,
-  method_not_allowed: 405,
-  application_error: 500,
-  internal_server_error: 500,
-} as const;
+/**
+ * A single address as this transport sends it: an address string, or an object that has
+ * an `address`.
+ */
+type ResendAddress = string | { name?: string; address: string };
 
 /**
  * Transport for sending email via the Resend SDK.
@@ -46,8 +33,12 @@ export class ResendTransport implements Transport<SentMessageInfo> {
   }
 
   public send(mail: MailMessage, callback: (_err: Error | null, _info: SentMessageInfo) => void) {
+    // Failures have always been reported with `null` as the info, which the nodemailer
+    // callback type does not allow for.
+    const noInfo = null as unknown as SentMessageInfo;
+
     if (!mail.data.to || !mail.data.from) {
-      return callback(new Error('Missing required fields "to" or "from"'), null);
+      return callback(new Error('Missing required fields "to" or "from"'), noInfo);
     }
 
     const replyTo = this.toResendAddresses(mail.data.replyTo);
@@ -67,54 +58,96 @@ export class ResendTransport implements Transport<SentMessageInfo> {
       })
       .then((response) => {
         if (response.error) {
-          const statusCode = RESEND_ERROR_CODES_BY_KEY[response.error.name] ?? 500;
+          // The status is missing when the request never reached the Resend API.
+          const statusCode = response.error.statusCode ?? 500;
 
           throw new Error(`[${statusCode}]: ${response.error.name} ${response.error.message}`);
         }
 
-        callback(null, response.data);
+        callback(null, {
+          ...response.data,
+          // Resend sets the Message-ID header itself, the email id is what identifies the
+          // message afterwards.
+          messageId: response.data.id,
+          envelope: mail.message.getEnvelope(),
+        });
       })
       .catch((error) => {
-        callback(error, null);
+        callback(error, noInfo);
       });
+  }
+
+  /**
+   * Flattens nodemailer address input into single addresses, in order. The input can be
+   * an address string, an address object, an address group or a list of any of these,
+   * nested lists included. Entries without an address are skipped.
+   */
+  private flattenAddresses(addresses: Mail.Options['to']): ResendAddress[] {
+    const flattened: ResendAddress[] = [];
+
+    // Walked with a stack instead of recursion so that a deeply nested list can not
+    // exhaust the call stack. Every list is walked once, which ends a list that contains
+    // itself.
+    const pending: Mail.Options['to'][] = [addresses];
+    const seen = new WeakSet<object>();
+
+    while (pending.length > 0) {
+      const current = pending.pop();
+
+      if (!current) {
+        continue;
+      }
+
+      if (typeof current === 'string') {
+        flattened.push(current);
+        continue;
+      }
+
+      if (Array.isArray(current)) {
+        if (seen.has(current)) {
+          continue;
+        }
+
+        seen.add(current);
+
+        for (let index = current.length - 1; index >= 0; index--) {
+          pending.push(current[index]);
+        }
+
+        continue;
+      }
+
+      if (current.group) {
+        pending.push(current.group);
+        continue;
+      }
+
+      if (current.address) {
+        flattened.push({ name: current.name, address: current.address });
+      }
+    }
+
+    return flattened;
   }
 
   public toResendAddresses(addresses: Mail.Options['to']) {
-    if (!addresses) {
-      return [];
-    }
-
-    if (typeof addresses === 'string') {
-      return [addresses];
-    }
-
-    if (Array.isArray(addresses)) {
-      return addresses.map((address) => {
-        if (typeof address === 'string') {
-          return address;
-        }
-
-        return address.address;
-      });
-    }
-
-    return [addresses.address];
+    return this.flattenAddresses(addresses).map((address) =>
+      typeof address === 'string' ? address : address.address,
+    );
   }
 
   public toResendFromAddress(address: Mail.Options['from']): string {
-    if (!address) {
+    const [from] = this.flattenAddresses(address);
+
+    if (!from) {
       return '';
     }
 
-    if (Array.isArray(address)) {
-      return this.toResendFromAddress(address[0]);
+    if (typeof from === 'string') {
+      return from;
     }
 
-    if (typeof address === 'string') {
-      return address;
-    }
-
-    return `${address.name} <${address.address}>`;
+    return from.name ? `${from.name} <${from.address}>` : from.address;
   }
 
   /**

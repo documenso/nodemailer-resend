@@ -1,22 +1,24 @@
 import { Stream } from 'node:stream';
+import { createTransport } from 'nodemailer';
 import type Mail from 'nodemailer/lib/mailer';
-import type MailMessage from 'nodemailer/lib/mailer/mail-message';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ResendTransport } from './transport';
 
-const sendViaTransport = async (transport: ResendTransport, mailData: Mail.Options) => {
-  const sendSpy = vi.fn().mockResolvedValue({ data: { id: 'fake-id' }, error: null });
+const stubResendResponse = (transport: ResendTransport, response: unknown) => {
+  const sendSpy = vi.fn().mockResolvedValue(response);
 
   (transport as unknown as { _client: { emails: { send: typeof sendSpy } } })._client = {
     emails: { send: sendSpy },
   };
 
-  await new Promise<void>((resolve, reject) => {
-    transport.send({ data: mailData } as unknown as MailMessage, (err) =>
-      err ? reject(err) : resolve(),
-    );
-  });
+  return sendSpy;
+};
+
+const sendViaTransport = async (transport: ResendTransport, mailData: Mail.Options) => {
+  const sendSpy = stubResendResponse(transport, { data: { id: 'fake-id' }, error: null });
+
+  await createTransport(transport).sendMail(mailData);
 
   return sendSpy.mock.calls[0][0];
 };
@@ -84,6 +86,49 @@ describe('ResendTransport', () => {
       const payload = await sendViaTransport(transport, BASE_MAIL_DATA);
 
       expect(payload.headers).toBeUndefined();
+    });
+
+    it('should resolve with the Resend email id as the message id and the envelope', async () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      stubResendResponse(transport, { data: { id: 'fake-id' }, error: null });
+
+      const info = await createTransport(transport).sendMail({
+        ...BASE_MAIL_DATA,
+        cc: { name: 'Copy User', address: 'copy@example.com' },
+      });
+
+      expect(info).toEqual({
+        id: 'fake-id',
+        messageId: 'fake-id',
+        envelope: { from: 'test@example.com', to: ['recipient@example.com', 'copy@example.com'] },
+      });
+    });
+
+    it('should reject with the status code reported by Resend', async () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      stubResendResponse(transport, {
+        data: null,
+        error: { statusCode: 401, name: 'restricted_api_key', message: 'Restricted.' },
+      });
+
+      await expect(createTransport(transport).sendMail(BASE_MAIL_DATA)).rejects.toThrow(
+        '[401]: restricted_api_key Restricted.',
+      );
+    });
+
+    it('should reject with a 500 status code when Resend reports none', async () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      stubResendResponse(transport, {
+        data: null,
+        error: { statusCode: null, name: 'application_error', message: 'Unable to fetch data.' },
+      });
+
+      await expect(createTransport(transport).sendMail(BASE_MAIL_DATA)).rejects.toThrow(
+        '[500]: application_error Unable to fetch data.',
+      );
     });
   });
 
@@ -241,6 +286,81 @@ describe('ResendTransport', () => {
 
       expect(result).toEqual(['test@example.com', 'test2@example.com']);
     });
+
+    it('should flatten nested arrays in order', () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const addresses = [
+        'test@example.com',
+        [{ name: 'test2', address: 'test2@example.com' }, ['test3@example.com']],
+        'test4@example.com',
+      ];
+
+      const result = transport.toResendAddresses(addresses);
+
+      expect(result).toEqual([
+        'test@example.com',
+        'test2@example.com',
+        'test3@example.com',
+        'test4@example.com',
+      ]);
+    });
+
+    it('should expand address groups into their members', () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const addresses = [
+        'test@example.com',
+        {
+          name: 'Team',
+          group: [
+            { name: 'test2', address: 'test2@example.com' },
+            { address: 'test3@example.com' },
+          ],
+        },
+        { name: 'Empty', group: [] },
+      ];
+
+      const result = transport.toResendAddresses(addresses);
+
+      expect(result).toEqual(['test@example.com', 'test2@example.com', 'test3@example.com']);
+    });
+
+    it('should skip entries without an address', () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const addresses = ['test@example.com', { name: 'No address' }, ''];
+
+      const result = transport.toResendAddresses(addresses);
+
+      expect(result).toEqual(['test@example.com']);
+    });
+
+    it('should handle deeply nested arrays', () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      let addresses: Mail.Options['to'] = 'test@example.com';
+
+      for (let depth = 0; depth < 100_000; depth++) {
+        addresses = [addresses];
+      }
+
+      const result = transport.toResendAddresses(addresses);
+
+      expect(result).toEqual(['test@example.com']);
+    });
+
+    it('should handle an array that contains itself', () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const addresses: Mail.Options['to'] = ['test@example.com'];
+
+      addresses.push(addresses);
+
+      const result = transport.toResendAddresses(addresses);
+
+      expect(result).toEqual(['test@example.com']);
+    });
   });
 
   describe('toResendFromAddress', () => {
@@ -268,6 +388,29 @@ describe('ResendTransport', () => {
       const transport = new ResendTransport({ apiKey: 'test-api-key' });
 
       const address = { name: 'Test User', address: 'test@example.com' };
+
+      const result = transport.toResendFromAddress(address);
+
+      expect(result).toEqual('Test User <test@example.com>');
+    });
+
+    it('should return only the address of an object without a name', () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const address = { address: 'test@example.com' };
+
+      const result = transport.toResendFromAddress(address);
+
+      expect(result).toEqual('test@example.com');
+    });
+
+    it('should use the first address of nested arrays and groups', () => {
+      const transport = new ResendTransport({ apiKey: 'test-api-key' });
+
+      const address = [
+        [{ name: 'Team', group: [{ name: 'Test User', address: 'test@example.com' }] }],
+        'test2@example.com',
+      ];
 
       const result = transport.toResendFromAddress(address);
 
